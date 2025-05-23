@@ -15,7 +15,10 @@ def _():
     import marimo as mo
     import matplotlib.pyplot as plt
     import numpy as np
-    return mo, np, plt
+    from sklearn.decomposition import FastICA
+    from scipy.optimize import linear_sum_assignment
+    import itertools
+    return FastICA, itertools, linear_sum_assignment, mo, np, plt
 
 
 @app.cell(hide_code=True)
@@ -37,8 +40,8 @@ def _(mo):
     return
 
 
-@app.cell(hide_code=True)
-def _(np):
+@app.cell
+def _(mo, np):
     def sample_dist(n_samples, dist="uniform"):
         if dist == "uniform":
             return np.random.uniform(low=-1, high=1, size=n_samples)
@@ -50,19 +53,25 @@ def _(np):
             return np.random.normal(loc=0, scale=1, size=n_samples)
 
         raise ValueError(f"Dont know about distribution {dist}")
-    return (sample_dist,)
+
+    @mo.cache
+    def gen_x(B, e):
+        n = B.shape[0]
+        I = np.eye(n)
+        x = np.linalg.inv(I - B) @ e
+        return x    
+    return gen_x, sample_dist
 
 
-@app.cell
-def _(mo, np, sample_dist):
+@app.cell(hide_code=True)
+def _(gen_x, mo, np, sample_dist):
     @mo.cache
     def plot_xs(ax, B, n_samples=1000, dist1="unif", dist2="unif"):
         e1 = sample_dist(n_samples, dist1)
         e2 = sample_dist(n_samples, dist2)
 
-        I = np.eye(2)
         e = np.vstack([e1, e2])
-        x = np.linalg.inv(I - B) @ e
+        x = gen_x(B, e)
         x1 = x[0]
         x2 = x[1]
 
@@ -75,7 +84,7 @@ def _(mo, np, sample_dist):
 
 @app.cell(hide_code=True)
 def _(mo):
-    n_samples_slider = mo.ui.slider(100, 5000, value=1000, label="n")
+    n_samples_slider = mo.ui.slider(5, 5000, value=1000, label="n")
     e1_dist_choice = mo.ui.dropdown(["uniform", "exponential", "laplace", "normal"], value="uniform", label="e1 distribution")
     e2_dist_choice = mo.ui.dropdown(["uniform", "exponential", "laplace", "normal"], value="uniform", label="e2 distribution")
 
@@ -135,7 +144,7 @@ def _(
 
     plt.tight_layout()
     plt.show()
-    return
+    return (n_samples,)
 
 
 @app.cell
@@ -145,8 +154,95 @@ def _(mo):
     ## Lingam Discovery Algorithm
 
     Section 4, Algorithm A: https://www.cs.helsinki.fi/group/neuroinf/lingam/JMLR06.pdf
+
+    Adapted from https://github.com/cdt15/lingam
     """
     )
+    return
+
+
+@app.cell
+def _(
+    FastICA,
+    est_causal_order,
+    gen_x,
+    linear_sum_assignment,
+    n_samples,
+    np,
+    sample_dist,
+):
+    # Setup the data. Want to learn B
+
+    B = np.array([
+        [0, 0], 
+        [0.8, 0]
+    ])
+
+    e1 = sample_dist(n_samples=n_samples, dist="uniform")
+    e2 = sample_dist(n_samples=n_samples, dist="uniform")
+
+    e = np.vstack([e1, e2])
+
+    X = gen_x(B, e).T
+
+    # Normalise x
+    X = X - X.mean(axis=0, keepdims=True)
+
+
+    ica = FastICA(whiten="unit-variance", random_state=42)
+    ica.fit(X)
+    W_ica = ica.components_
+
+    # Step 2. Find only permutation of cols which yields matrix without 0 on diagonal.
+    # In practice, all elements will be nearly non-zero. Hence minimise sum of |1/ W_{ii}|
+
+    _, col_ind = linear_sum_assignment(1 / np.abs(W_ica))
+
+    W_ica = W_ica[:, col_ind]
+
+    diag_elems = np.diag(W_ica)
+
+    W_est = W_ica / diag_elems[np.newaxis, :]
+
+    B_est =  np.eye(W_est.shape[0]) - W_est
+
+    B_est
+
+    # Step 5. Causal Order estimation
+    # Want P s.t. B = P B_est P^T  is approx. lower triangular
+    # minimise sum of B_ij^2 for i<=j (sum of upper triangle including diag)
+
+    B_est, P = est_causal_order(B_est)
+
+    B_est
+    return
+
+
+@app.cell
+def _(itertools, np):
+    def est_causal_order(B):
+        # Exhaustive permutation search. Is O(d!)
+        d = B.shape[0]
+        perms = list(itertools.permutations(range(d)))
+        best_score = float("inf")
+        best_perm = None
+
+        for perm in perms:
+            P = np.eye(d)[list(perm)]
+            B_perm = P @ B @ P.T
+            score = np.sum(np.triu(B_perm)**2)
+            if score < best_score:
+                best_perm = perm
+                best_score = score
+
+        P_best = np.eye(d)[list(best_perm)]
+        return P_best @ B @ P_best.T, P_best
+        
+    return (est_causal_order,)
+
+
+@app.cell
+def _():
     return
 
 
