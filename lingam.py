@@ -54,9 +54,9 @@ def _(np):
 
 
 @app.cell
-def _(mo, np, plt, sample_dist):
+def _(mo, np, sample_dist):
     @mo.cache
-    def plot_xs(B, n_samples=1000, dist1="unif", dist2="unif"):
+    def plot_xs(ax, B, n_samples=1000, dist1="unif", dist2="unif"):
         e1 = sample_dist(n_samples, dist1)
         e2 = sample_dist(n_samples, dist2)
 
@@ -66,11 +66,10 @@ def _(mo, np, plt, sample_dist):
         x1 = x[0]
         x2 = x[1]
 
-        fig, ax = plt.subplots()
         ax.scatter(x1, x2)
         ax.set_xlabel("x1")
         ax.set_ylabel("x2")    
-        return fig
+
     return (plot_xs,)
 
 
@@ -80,9 +79,15 @@ def _(mo):
     e1_dist_choice = mo.ui.dropdown(["uniform", "exponential", "laplace", "normal"], value="uniform", label="e1 distribution")
     e2_dist_choice = mo.ui.dropdown(["uniform", "exponential", "laplace", "normal"], value="uniform", label="e2 distribution")
 
-    b_matrix_input = mo.ui.text_area(
+    b1_matrix_input = mo.ui.text_area(
         value="[[0, 0], [0.8, 0]]",
-        label="B matrix (Python list syntax)"
+        label="B_1 matrix (Python list syntax)"
+    )
+
+
+    b2_matrix_input = mo.ui.text_area(
+        value="[[0, 0.8], [0, 0]]",
+        label="B_2 matrix (Python list syntax)"
     )
 
     mo.md(
@@ -94,32 +99,54 @@ def _(mo):
 
         {e2_dist_choice}
 
-        {b_matrix_input}
+        {b1_matrix_input} {b2_matrix_input}
         """
     )
-    return b_matrix_input, e1_dist_choice, e2_dist_choice, n_samples_slider
+    return (
+        b1_matrix_input,
+        b2_matrix_input,
+        e1_dist_choice,
+        e2_dist_choice,
+        n_samples_slider,
+    )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
-    b_matrix_input,
+    b1_matrix_input,
+    b2_matrix_input,
     e1_dist_choice,
     e2_dist_choice,
     n_samples_slider,
     np,
     plot_xs,
+    plt,
 ):
     n_samples = n_samples_slider.value
-    B = np.array(eval(b_matrix_input.value))
+    B1 = np.array(eval(b1_matrix_input.value))
+    B2 = np.array(eval(b2_matrix_input.value))
     e1_dist = e1_dist_choice.value
     e2_dist = e2_dist_choice.value
 
-    plot_xs(B, n_samples=n_samples, dist1=e1_dist, dist2=e2_dist)
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(10, 5))
+
+    plot_xs(ax1, B1, n_samples=n_samples, dist1=e1_dist, dist2=e2_dist)
+    plot_xs(ax2, B2, n_samples=n_samples, dist1=e1_dist, dist2=e2_dist)
+
+    plt.tight_layout()
+    plt.show()
     return
 
 
 @app.cell
-def _():
+def _(mo):
+    mo.md(
+        r"""
+    ## Lingam Discovery Algorithm
+
+    Section 4, Algorithm A: https://www.cs.helsinki.fi/group/neuroinf/lingam/JMLR06.pdf
+    """
+    )
     return
 
 
