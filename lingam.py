@@ -174,8 +174,8 @@ def _(
     # Setup the data. Want to learn B
 
     B = np.array([
-        [0, 0], 
-        [0.8, 0]
+        [0, 0.8], 
+        [0, 0]
     ])
 
     e1 = sample_dist(n_samples=n_samples, dist="uniform")
@@ -193,28 +193,29 @@ def _(
     ica.fit(X)
     W_ica = ica.components_
 
+
     # Step 2. Find only permutation of cols which yields matrix without 0 on diagonal.
     # In practice, all elements will be nearly non-zero. Hence minimise sum of |1/ W_{ii}|
 
     _, col_ind = linear_sum_assignment(1 / np.abs(W_ica))
 
-    W_ica = W_ica[:, col_ind]
+    W_ica[col_ind] = W_ica
 
     diag_elems = np.diag(W_ica)
 
-    W_est = W_ica / diag_elems[np.newaxis, :]
+    W_est = W_ica / diag_elems[:, np.newaxis]
 
     B_est =  np.eye(W_est.shape[0]) - W_est
-
-    B_est
 
     # Step 5. Causal Order estimation
     # Want P s.t. B = P B_est P^T  is approx. lower triangular
     # minimise sum of B_ij^2 for i<=j (sum of upper triangle including diag)
 
-    B_est, P = est_causal_order(B_est)
+    P = est_causal_order(B_est)
+    print(B_est)
+    print(P)
 
-    B_est
+    B_est = P @ B_est @ P.T
     return
 
 
@@ -236,8 +237,7 @@ def _(itertools, np):
                 best_score = score
 
         P_best = np.eye(d)[list(best_perm)]
-        return P_best @ B @ P_best.T, P_best
-        
+        return P_best
     return (est_causal_order,)
 
 
